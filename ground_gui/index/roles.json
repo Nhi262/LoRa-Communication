@@ -1,0 +1,18 @@
+{
+  "allowed_domains": ["eiu.edu.vn", "gmail.com"],
+
+  "admin": [
+    "nhi.vohoangyen@eiu.edu.vn",
+    "voxnhimpc@gmail.com"
+  ],
+
+  "operator": [
+    
+  ],
+
+  "domain_defaults": {
+    "gmail.com": "operator"
+  },
+
+  "default_role": "viewer"
+}

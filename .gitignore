@@ -1,0 +1,14 @@
+# Ignore credentials and secrets
+ground_gui/index/credentials.json
+*.env
+*.key
+*.pem
+
+# Ignore Python cache (nếu có)
+__pycache__/
+*.pyc
+
+# Ignore Qt build files (nếu có)
+build/
+*.pro.user
+

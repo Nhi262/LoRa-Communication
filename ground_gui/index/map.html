@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>EIU FABLAB - Maps</title>
+  <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.js"></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/2/atlas.min.css" type="text/css">
+
+  <style>
+    :root{
+      --bg:#0f1216;
+      --panel:#1b212a;
+      --card:#202733;
+      --muted:#93a0ad;
+      --text:#e6ebf0;
+      --line:#2c3542;
+      --accent:#3b82f6;
+      --accent-2:#22c55e;
+      --danger:#ef4444;
+      --radius:14px;
+      --shadow:0 10px 30px rgba(0,0,0,.35);
+
+      /* layout constants */
+      --sidebar-w: 340px;  
+      --steps-w: 320px;     
+      --steps-fab: 40px;    
+      --gap12: 12px;        
+    }
+
+    html, body{
+      width:100%; height:100%; margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background:var(--bg); color:var(--text);
+      display:flex;
+    }
+
+    #myMap{ flex:1; position:relative; height:100%; z-index:0; }
+
+    /* ===== SIDEBAR ===== */
+    #sidebar{
+      box-sizing: border-box;           
+      width:var(--sidebar-w); min-width:320px; height:100%;
+      position:fixed; inset:0 auto 0 0;
+      background:#2c3542;
+      border-right:1px solid var(--line);
+      padding:18px;
+      box-shadow:var(--shadow);
+      z-index:1000; overflow-y:auto;
+    }
+    .sb__header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .sb__brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.3px; }
+    .sb__brand .dot{ width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,#6ee7b7,#22c55e); box-shadow:0 0 16px rgba(34,197,94,.55); }
+    .sb__section{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:14px; overflow:visible; }
+    #sidebar > .sb__section:last-of-type{ margin-bottom:0 !important; }
+    .sb__title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin-bottom:10px; }
+
+    .sb__field{ display:flex; align-items:center; gap:8px; background:#171c24; border:1px solid var(--line); padding:10px 12px; border-radius:10px; }
+    .sb__field input, .sb__field select{ flex:1; background:transparent; border:none; outline:none; color:var(--text); font-size:14px; }
+    .sb__field .icon{width:18px;height:18px;opacity:.85;display:grid;place-items:center;}
+
+    .btn{ border:none; outline:none; cursor:pointer; border-radius:10px; padding:10px 12px; color:#fff; background:#2b3240; transition:.18s ease; font-weight:600; }
+    .btn:hover{transform:translateY(-1px); filter:brightness(1.05);}
+    .btn--primary{ background:var(--accent); } .btn--green{ background:var(--accent-2); } .btn--danger{ background:var(--danger); } .btn--ghost{ background:#1a1f28; border:1px solid var(--line); color:var(--text); }
+    
+    .btn.is-busy,
+    .btn:disabled{
+      pointer-events:none;
+      opacity:.6;
+      transform: translateY(1px);
+      position:relative;
+    }
+
+    .btn.is-busy::after{
+      content:"";
+      position:absolute; inset:0;
+      border-radius:inherit;
+      background:linear-gradient(110deg,transparent,rgba(255,255,255,.22),transparent);
+      background-size:200% 100%;
+      animation: shine 1.1s linear infinite;
+    }
+
+    @keyframes shine{
+      0%{ background-position:-200% 0 }
+      100%{ background-position:200% 0 }
+    }
+    .status-card{
+      position:absolute; right:18px; bottom:86px; width:340px; max-height:40%;
+      background:#2c3542; border:1px solid #334155; border-radius:12px; box-shadow:var(--shadow);
+      display:none; flex-direction:column; overflow:hidden; z-index:4200;
+      opacity:0; transform:translateY(8px);
+      transition:opacity .18s ease, transform .18s ease;
+    }
+    .status-card.show{ display:flex; opacity:1; transform:translateY(0); }
+
+    .s-head{ display:flex; align-items:center; justify-content:space-between;
+      padding:8px 10px; font-weight:700; letter-spacing:.3px; background:#202733; }
+    .s-close{ border:none; background:#1a1f28; color:#cbd5e1; border-radius:8px; padding:2px 8px; cursor:pointer; }
+
+    .s-body{ padding:10px; font-size:13px; border-left:3px solid #3b82f6; }
+    .s-body.ok  { border-left-color:#22c55e; }
+    .s-body.err { border-left-color:#ef4444; }
+
+
+        
+    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .xyz{ display:grid; grid-template-rows:repeat(3, auto); grid-auto-flow:column; gap:8px; }
+    .xyz .sb__field{ padding:8px 10px; } .xyz input::placeholder{ color:#8ea1b7; }
+
+    /* ===== FABs góc phải-trên của MAP ===== */
+    #myMap .map-fab{
+      position:absolute; top:16px; right:16px; width:44px; height:44px;
+      display:grid; place-items:center; border:none; border-radius:12px;
+      background:#2c3542; box-shadow:0 2px 8px rgba(0,0,0,.35);
+      cursor:pointer; z-index:2000; transition:.2s;
+    }
+    #myMap .map-fab.map-fab--secondary{ right:calc(16px + 44px + 12px); }
+
+    /* ===== Telemetry mini ===== */
+    #teleDrawer{ position:absolute; top:50%; right:0; transform:translateY(-50%); z-index:4000; }
+    .tele__toggle{ width:26px; height:48px; border:none; border-radius:10px 0 0 10px; background:#49ad5a; color:#fff; box-shadow:0 3px 8px rgba(0,0,0,.3); cursor:pointer;}
+    #telemetryCard{ position:absolute; top:50%; right:34px; transform:translate(0,-50%); width:270px; padding:10px 12px; background:#2c3542; border-radius:12px; box-shadow:var(--shadow); }
+    #teleDrawer.collapsed #telemetryCard{ transform:translate(110%,-50%); opacity:0; pointer-events:none; }
+    .tele__header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .tele__title{ font-size:14px; font-weight:700; } .tele__status{ font-size:11px; padding:3px 8px; border-radius:999px; background:#7a8792; color:#fff; }
+    .tele__status--ok{ background:#2ecc71; } .tele__status--bad{ background:#e74c3c; }
+    .tele__row{ display:grid; grid-template-columns:1fr auto auto; align-items:center; column-gap:8px; padding:4px 0; }
+    .tele__label{ font-size:12px; opacity:.9; display:flex; gap:6px; align-items:center; }
+    .tele__icon{ width:16px;height:16px; display:grid; place-items:center; }
+    .tele__value{ font-weight:600; text-align:right; min-width:56px; font-size:13px; }
+    .tele__note{ opacity:.75; min-width:30px; font-size:11px; }
+
+    /* ===== Drone pulse marker ===== */
+    .pulse-marker { position: relative; width: 22px; height: 22px; will-change: transform; }
+    .pulse-dot { position: absolute; inset: 0; border-radius: 50%; background: var(--pulse-color, #e67e22); border: 2px solid #fff; box-shadow: 0 0 8px rgba(230,126,34,0.45); animation: breathe 2.4s ease-in-out infinite; }
+    .pulse-ring { position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; border-radius: 50%; background: var(--pulse-glow, rgba(230,126,34,0.35)); transform: translate(-50%, -50%); animation: pulse 1.8s ease-out infinite; pointer-events: none; }
+    .pulse-ring.r2 { animation-delay: .6s; } .pulse-ring.r3 { animation-delay: 1.2s; }
+    /* keyframes */
+    @keyframes pulse {
+      0%   { transform: translate(-50%, -50%) scale(1);   opacity: .65; }
+      70%  { transform: translate(-50%, -50%) scale(2.6); opacity: 0;   }
+      100% { opacity: 0; }
+    }
+    @keyframes breathe {
+      0%,100% { transform: scale(1);   filter: brightness(1);   }
+      50%     { transform: scale(0.9); filter: brightness(1.15); }
+    }
+    @keyframes bump {
+      0%   { transform: translateY(0) scale(1);   }
+      50%  { transform: translateY(-2px) scale(1.08); }
+      100% { transform: translateY(0) scale(1);  }
+    }
+    /* ===== Mission Steps: NÚT sát sidebar, PANEL nằm BÊN PHẢI nút ===== */
+    .steps-fab{
+      position:absolute;
+      top:16px;
+      left: calc(var(--sidebar-w) + 16px);            /* nút ngay mép bản đồ */
+      width: var(--steps-fab); height: var(--steps-fab);
+      display:grid; place-items:center;
+      border:none; border-radius:12px; background:#2c3542; color:#fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.35);
+      z-index:3500;
+    }
+    .steps-panel{
+      position:absolute;
+      top:16px;
+      left: calc(var(--sidebar-w) + 16px + var(--steps-fab) + var(--gap12)); /* panel ở PHẢI nút */
+      width: var(--steps-w);
+      max-height: calc(100% - 32px);
+      display:flex; flex-direction:column; gap:10px;
+      background:#2c3542; color:#e6ebf0;
+      border:1px solid #2c3542; border-radius:14px; box-shadow:var(--shadow);
+      z-index:3500;
+    }
+    .steps-panel.is-hidden{ display:none; }
+    .steps-header{ display:flex; align-items:center; gap:10px; padding:10px 12px 0 12px; }
+    .steps-title{ font-weight:700; letter-spacing:.2px; }
+    .steps-x{ margin-left:auto; border:none; background:#0000; color:#94a3b8; font-size:20px; cursor:pointer; }
+    .steps-list{overflow:auto; padding:0 12px; flex:1; min-height:0;}
+    .step-item{ background:#202733; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:8px; }
+    .step-head{
+      display:grid;
+      grid-template-columns:auto 1fr auto;  /* số thứ tự | type (co giãn) | actions */
+      align-items:center;
+      gap:8px;
+      margin-bottom:8px;
+    }
+
+    .step-num{
+      width: 26px;              
+      height: 26px;
+      min-width: 26px;
+      line-height: 26px;        
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      background: #3b82f6;
+      flex: 0 0 26px !important; /* ngăn flex container kéo giãn */
+    }
+    .step-type{ flex:1; background:#171c24; border:1px solid #2b3442; border-radius:8px; color:#e6ebf0; padding:6px 8px; }
+    .step-actions{ display:flex; gap:6px;flex:0 0 auto; justify-content:flex-end; }
+    .step-actions button{ border:none; border-radius:8px; background:#1a1f28; color:#cbd5e1; width:28px; height:28px; cursor:pointer; }
+    .step-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .step-field{ display:flex; align-items:center; gap:6px; background:#171c24; border:1px solid #2b3442; border-radius:8px; padding:6px 8px; }
+    .step-field input{ width:100%; background:transparent; border:none; outline:none; color:#e6ebf0; }
+    .step-foot{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; padding-bottom:10px; }
+    .step-task{ grid-column:1 / -1; background:#171c24; border:1px solid #2b3442; border-radius:8px; padding:6px 8px; color:#e6ebf0; }
+    .steps-footer{ display:flex; gap:10px; padding:0 12px 12px 12px; }
+    .icon-btn{
+      width:28px; height:28px;
+      display:grid; place-items:center;
+      border:none; border-radius:8px;
+      background:#1a1f28; color:#cbd5e1;
+      cursor:pointer;
+    }
+    .icon-btn:hover{ background:#243041; }
+    .icon-btn svg{ width:16px; height:16px; }
+
+    /* Riêng nút xoá – nhấn mạnh nhưng không chói */
+    .icon-btn.del{ color:#f87171; background:#251c1d; }
+    .icon-btn.del:hover{ background:#312022; }
+
+    /* Cho .step-type co giãn đúng, không đẩy actions tràn khung */
+    .step-type{ min-width:0; }
+
+    /* Đảm bảo item không “bể” bố cục */
+    .step-item{ box-sizing:border-box; }
+
+    /* Panel list cuộn gọn gàng trong khung */
+    .steps-list{ overflow:auto; padding:0 12px; flex:1; min-height:0; }
+    /* ===== Auth overlay ===== */
+    .auth-overlay{
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff !important;   /* nền trắng toàn màn hình */
+    backdrop-filter: none !important;
+  }
+
+  /* Card và input ở chế độ sáng */
+  #authOverlay .auth-card{
+    width: 480px; max-width: 92vw;
+    background: #fff;
+    color: #0f172a;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.08);
+    padding: 20px 18px;
+  }
+  #authOverlay .auth-title{ color:#0f172a; }
+  #authOverlay .auth-field{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:12px; margin:10px 0;
+  }
+  #authOverlay .auth-field input{
+    background:transparent; color:#0f172a;
+  }
+  #authOverlay .auth-field input::placeholder{ color:#64748b; }
+
+  #authOverlay .auth-btn--primary{ background:#2563eb; color:#fff; }
+  #authOverlay .auth-btn--google{ background:#fff; color:#111; border:1px solid #e5e7eb; }
+    .auth-card{
+      width: 480px; max-width: 92vw;
+      background:#1f2632; color:#e6ebf0;
+      border:1px solid #2f3846; border-radius:16px; box-shadow:var(--shadow);
+      padding:20px 18px;
+    }
+    .auth-title{ text-align:center; font-weight:800; margin-bottom:12px; }
+    .auth-field{
+      display:flex; align-items:center; gap:8px;
+      background:#151a22; border:1px solid #2b3442; border-radius:10px;
+      padding:12px; margin:10px 0;
+    }
+    .auth-field input{ background:transparent; border:none; outline:none; color:#e6ebf0; width:100%; }
+    .auth-actions{ display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+    .auth-btn{ width:100%; padding:12px; border:none; border-radius:10px; font-weight:700; cursor:pointer; }
+    .auth-btn--primary{ background:#3b82f6; color:#fff; }
+    .auth-btn--google{ background:#fff; color:#111; display:flex; align-items:center; justify-content:center; gap:10px; }
+    .auth-btn.is-busy{ position:relative; opacity:.7; pointer-events:none; }
+    .auth-btn.is-busy::after{
+      content:""; position:absolute; inset:0; border-radius:inherit;
+      background:linear-gradient(110deg,transparent,rgba(0,0,0,.06),transparent);
+      background-size:200% 100%; animation:shine 1.1s linear infinite;
+    }
+    .auth-row{ display:flex; justify-content:space-between; align-items:center; }
+    .auth-small{ font-size:12px; opacity:.8; }
+    .auth-divider{ text-align:center; font-size:12px; opacity:.75; margin:4px 0; }
+    .auth-err{ display:none; margin-top:8px; font-size:13px; color:#f87171; background:#2a1e20; border:1px solid #3a2528; padding:8px 10px; border-radius:8px; }
+
+  </style>
+</head>
+
+<body>
+  <!-- ========= Sidebar ========= -->
+  <aside id="sidebar">
+    <div class="sb__header"><div class="sb__brand"><span class="dot"></span> Mission</div></div>
+
+    <div class="sb__section">
+      <div class="sb__title">Map</div>
+      <div class="sb__field" style="margin-bottom:10px;">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#9bb0c7" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+        </span>
+        <select id="styleSelector">
+          <option value="road">Road</option>
+          <option value="satellite">Satellite</option>
+          <option value="satellite_road_labels" selected>Hybrid</option>
+        </select>
+      </div>
+      <div class="sb__field">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#9bb0c7" stroke-width="1.8"><path d="M3 10l9-7 9 7-9 7-9-7z"/><path d="M12 17v7"/></svg>
+        </span>
+        <input id="coordInput" type="text" placeholder="Enter latitude, longitude" />
+      </div>
+    </div>
+
+    <div class="sb__section">
+      <div class="sb__title">Spatial Tools</div>
+      <div class="grid-2" style="margin-bottom:10px;">
+        <button id="drawPolylineBtn" class="btn btn--primary">Polyline</button>
+        <button id="drawPolygonBtn" class="btn btn--primary">Polygon</button>
+      </div>
+      <button id="clearMarkersBtn" class="btn btn--ghost" style="width:100%;">Delete</button>
+    </div>
+
+    <div class="sb__section">
+      <div class="sb__title">Control</div>
+      <div class="grid-2" style="margin-bottom:10px;">
+        <button id="connectBtn" class="btn btn--green">Connect</button>
+        <button id="disconnectBtn" class="btn btn--danger">Disconnect</button>
+      </div>
+      <div class="grid-2">
+        <button id="offboardBtn" class="btn btn--ghost">OFFBOARD</button>
+        <button id="landBtn" class="btn btn--ghost">LAND</button>
+
+      </div>
+    </div>
+
+    <div class="sb__section">
+      <div class="sb__title">Position</div>
+      <div class="sb__field" style="margin-bottom:10px;">
+        <span class="icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#9bb0c7" stroke-width="1.8"><path d="M12 2v20M2 12h20"/></svg>
+        </span>
+        <select id="posMode">
+          <option value="local" selected>Local (ENU)</option>
+          <option value="gps">GPS (WGS84)</option>
+        </select>
+      </div>
+      <div class="xyz">
+        <div class="sb__field"><input id="xVal" placeholder="X" readonly></div>
+        <div class="sb__field"><input id="yVal" placeholder="Y" readonly></div>
+        <div class="sb__field"><input id="zVal" placeholder="Z" readonly></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== Login overlay (ẩn sau khi auth OK) ===== -->
+  <div id="authOverlay" class="auth-overlay" aria-modal="true">
+    <div class="auth-card" role="dialog" aria-labelledby="authTitle">
+      <div class="auth-title" id="authTitle">Log in with EIU Account</div>
+
+      <div class="auth-field">
+        <input type="email" placeholder="Email or username" disabled>
+      </div>
+      <div class="auth-field">
+        <input type="password" placeholder="Password" disabled>
+      </div>
+
+      <div class="auth-row">
+        <a class="auth-small" style="text-decoration:none; color:#9fb1c3;" href="#" onclick="return false;">Forgot Password?</a>
+      </div>
+
+      <div class="auth-actions">
+        <button class="auth-btn auth-btn--primary" disabled>Log in</button>
+        <div class="auth-divider">or</div>
+        <button id="googleBtn" class="auth-btn auth-btn--google">
+          <!-- Google "G" -->
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5h-1.6v-.1H24v7.2h11.2C33.8 31.9 29.2 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.1-5.1C34.1 5.2 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l5.9 4.3C13.8 14 18.5 11 24 11c3.1 0 5.9 1.2 8 3.1l5.1-5.1C34.1 5.2 29.3 3 24 3 16 3 9.2 7.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.1 0 9.8-1.9 13.3-5.1l-6.1-4.9c-2 1.4-4.6 2.3-7.2 2.3-5.2 0-9.6-3.4-11.2-8.2l-6.1 4.7C9.6 39.9 16.3 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5h-1.6v-.1H24v7.2h11.2c-1.3 3.8-5.1 6.5-9.2 6.5-5.2 0-9.6-3.4-11.2-8.2l-6.1 4.7C9.6 39.9 16.3 45 24 45c8.3 0 15.3-5.6 17.5-13.2 0-0.1 2.1-6.1 2.1-11.3 0-1.2-.1-2.3-.4-3.5z"/></svg>
+          Continue with Google
+        </button>
+        <div id="authErr" class="auth-err"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========= Map & FABs ========= -->
+  <div id="myMap">
+    <button id="centerOnDroneBtn" class="map-fab" title="Center on Drone" aria-label="Center on Drone">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="3" fill="none" stroke="#fff" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="12" r="8" fill="none" stroke="#fff" stroke-width="1.8" opacity=".6"/></svg>
+    </button>
+    <button id="satelliteBtn" class="map-fab map-fab--secondary" title="Satellite background">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+
+    <!-- Telemetry -->
+    <div id="teleDrawer" class="collapsed" aria-live="polite">
+      <div id="telemetryCard">
+        <div class="tele__header"><div class="tele__title">DRONE</div><div id="teleConn" class="tele__status">Disconnected</div></div>
+        <div class="tele__row"><div class="tele__label"><span class="tele__icon"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2" fill="none" stroke="#e8eff7" stroke-width="1.8"/><rect x="20" y="10" width="2" height="4" rx="1" fill="none" stroke="#e8eff7" stroke-width="1.8"/></svg></span> Battery</div><div id="teleBattText" class="tele__value">—</div><div class="tele__note"></div></div>
+        <div class="tele__row"><div class="tele__label"><span class="tele__icon"><svg viewBox="0 0 24 24" fill="none" stroke="#e8eff7" stroke-width="1.8"><path d="M21 12a9 9 0 1 0-18 0"/><path d="M12 12l5-5"/></svg></span> Speed</div><div id="teleSpeed" class="tele__value">—</div><div class="tele__note">m/s</div></div>
+        <div class="tele__row"><div class="tele__label"><span class="tele__icon"><svg viewBox="0 0 24 24" fill="none" stroke="#e8eff7" stroke-width="1.8"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></span> Alt</div><div id="teleAlt" class="tele__value">—</div><div class="tele__note">m</div></div>
+      </div>
+      <button id="teleToggle" class="tele__toggle" aria-label="Toggle telemetry">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 4l8 8-8 8" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <!-- Mission Steps -->
+    <div id="stepsPanel" class="steps-panel is-hidden">
+      <div class="steps-header">
+        <span class="steps-title">Mission Steps</span>
+        <button id="stepsHideBtn" class="steps-x" title="Hide">&times;</button>
+      </div>
+      <div id="stepsList" class="steps-list"></div>
+      <div class="steps-footer">
+        <button id="addStepBtn" class="btn btn--ghost">New step</button>
+        <button id="sendMissionBtn" class="btn btn--primary">Send mission</button>
+      </div>
+    </div>
+    <button id="stepsShowBtn" class="steps-fab" title="Mission steps" aria-label="Mission steps">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div id="statusCard" class="status-card" hidden aria-live="polite" aria-atomic="true">
+      <div class="s-head">
+        <span>STATUS</span>
+        <button id="statusClose" class="s-close" aria-label="Close">×</button>
+      </div>
+      <div id="statusBody" class="s-body"></div>
+    </div>
+    </div>  <!-- <<< ĐÓNG #myMap ở đây -->
+
+
+
+  <script>
+
+    const ORIGIN_LAT = 11.052939;
+    const ORIGIN_LON = 106.666123;
+    const subscriptionKey = 'YOUR_KEY_HERE';
+    let isAuthed = false;
+    let currentRole = 'viewer';
+
+    let map, dataSource, lineLayer, polygonLayer;
+    const markers = [];
+    let currentMode='local', lastLocal=null, lastGPS=null, droneMarker=null, droneHtmlEl=null, _lastDroneLL=null;
+
+    let telePinned=false, teleAutoTimer=null, allowAutoPeek=true;
+    const TELEMETRY_PEEK_MS=2500;
+    // --- Thêm ở global (trước initMapLogic) ---
+    const ACK_TIMEOUT_MS = 4000;
+    const ACK_RETRY_MAX  = 1;
+
+    // state dùng chung cho startOp/clearOp
+    const opTimers  = { OFFBOARD:null, LAND:null, CONNECT:null, DISCONNECT:null };
+    const opRetries = { OFFBOARD:0,    LAND:0,    CONNECT:0,    DISCONNECT:0    };
+
+    const pending = {
+      OFFBOARD: false,
+      LAND: false,
+      CONNECT: false,
+      DISCONNECT: false
+    };
+
+    window.onload=()=> {
+      map=new atlas.Map('myMap',{
+        center:[ORIGIN_LON,ORIGIN_LAT], zoom:16, style:'satellite_road_labels',
+        authOptions:{authType:'subscriptionKey', subscriptionKey}
+      });
+      map.events.add('ready',()=>initMapLogic());
+    };
+
+    function enuToLatLon(east,north,up,originLat=ORIGIN_LAT,originLon=ORIGIN_LON){
+      const R=6378137.0, oLat=originLat*Math.PI/180.0;
+      const dLat=north/R, dLon=east/(R*Math.cos(oLat));
+      return [originLon+dLon*180/Math.PI, originLat+dLat*180/Math.PI];
+    }
+
+    new QWebChannel(qt.webChannelTransport,function(channel){
+      const bridge = channel.objects.bridge;
+
+      window.bridge=bridge;
+      if(bridge.positionUpdated) bridge.positionUpdated.connect(function(x,y,z){ lastLocal={x:+x,y:+y,z:+z}; if(currentMode==='local')updateDroneMarkerFromLocal(); updatePositionFields(); updateAltUI(); });
+      if(bridge.positionUpdatedLocal) bridge.positionUpdatedLocal.connect(function(x,y,z){ lastLocal={x:+x,y:+y,z:+z}; if(currentMode==='local')updateDroneMarkerFromLocal(); updatePositionFields(); updateAltUI(); });
+      if(bridge.positionUpdatedGPS) bridge.positionUpdatedGPS.connect(function(lat,lon,alt){ lastGPS={lat:+lat,lon:+lon,alt:+alt}; if(currentMode==='gps')updateDroneMarkerFromGPS(); updatePositionFields(); updateAltUI(); });
+      if(bridge.batteryUpdated) bridge.batteryUpdated.connect(function(p,v){ updateBatteryUI(+p,+v); });
+      if(bridge.speedUpdated) bridge.speedUpdated.connect(function(s){ updateSpeedUI(+s); });
+
+      if (bridge.modePushed){
+        bridge.modePushed.connect(function(ok, mode, msg){
+          const offBtn  = document.getElementById('offboardBtn');
+          const landBtn = document.getElementById('landBtn');
+
+          if (mode === 'OFFBOARD'){
+            clearOp('OFFBOARD');
+            setBusy(offBtn, false);
+            pushStatus(`OFFBOARD: ${ok ? 'OK' : 'FAILED'} — ${msg}`, ok ? 'ok' : 'err');
+          } else if (mode === 'LAND'){
+            clearOp('LAND');
+            setBusy(landBtn, false);
+            pushStatus(`LAND: ${ok ? 'OK' : 'FAILED'} — ${msg}`, ok ? 'ok' : 'err');
+          }
+        });
+      }
+      bridge.linkUpdated.connect(function(ok){
+        const c = document.getElementById('connectBtn');
+        const d = document.getElementById('disconnectBtn');
+
+        if (ok){
+          clearOp('CONNECT');     // <-- thay vì chỉ pending.CONNECT = false
+          setBusy(c, false);
+        } else {
+          clearOp('DISCONNECT');  // <-- thay vì chỉ pending.DISCONNECT = false
+          setBusy(d, false);
+
+          // rớt link thì huỷ các operation còn lại
+          ['OFFBOARD','LAND'].forEach(clearOp);
+          setBusy(document.getElementById('offboardBtn'), false);
+          setBusy(document.getElementById('landBtn'),     false);
+          pushStatus('Mất link — huỷ các lệnh đang chờ phản hồi.', 'err');
+        }
+        setConnected(!!ok);
+        });
+    document.getElementById('googleBtn')?.addEventListener('click', ()=>{
+        setGoogleBtnBusy(true);
+        try{
+          if (bridge.googleAuthRequest)      bridge.googleAuthRequest();   // phiên bản mới
+          else if (bridge.google_login)      bridge.google_login();        // phiên bản cũ
+          else showAuthError('Bridge chưa có slot login.');
+        }catch(e){
+          setGoogleBtnBusy(false);
+          showAuthError('Không thể khởi động Google Login.');
+        }
+      });
+    bridge?.authChanged?.connect(function(ok, role){
+        setGoogleBtnBusy(false);
+        isAuthed = !!ok;
+        currentRole = role || 'viewer';
+        gateControls();
+        if(ok){
+          hideOverlay();
+          pushStatus(`Đăng nhập thành công — role: ${role}`, 'ok');
+        }else{
+          // nếu logout cũng hiện overlay lại
+          document.getElementById('authOverlay').style.display='flex';
+          pushStatus('Đã đăng xuất.', 'info');
+        }
+      });
+    bridge?.googleAuthErr?.connect(function(msg){
+        setGoogleBtnBusy(false);
+        showAuthError(msg || 'Login error.');
+        pushStatus(`Login error: ${msg}`, 'err');
+      });
+      gateControls();
+
+    });
+
+    function gateControls(){
+      const allowed = isAuthed && (currentRole === 'operator' || currentRole === 'admin');
+      ['connectBtn','disconnectBtn','offboardBtn','landBtn','sendMissionBtn'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.disabled = !allowed;
+      });
+    }
+    function showAuthError(msg){
+      const box = document.getElementById('authErr');
+      if(!box) return;
+      box.textContent = msg || 'Login failed.';
+      box.style.display = 'block';
+    }
+    function hideOverlay(){
+      const ov = document.getElementById('authOverlay');
+      if(ov) ov.style.display='none';
+    }
+
+    function setGoogleBtnBusy(on){
+      const b = document.getElementById('googleBtn');
+      if(b) b.classList.toggle('is-busy', !!on);
+    }
+
+    function initMapLogic(){
+      dataSource=new atlas.source.DataSource(); map.sources.add(dataSource);
+      lineLayer=new atlas.layer.LineLayer(dataSource,null,{strokeColor:'blue',strokeWidth:3});
+      polygonLayer=new atlas.layer.PolygonLayer(dataSource,null,{fillColor:'rgba(0,255,0,0.4)',strokeColor:'green',strokeWidth:2});
+      map.layers.add([lineLayer,polygonLayer]);
+
+      const connectBtn    = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      const offBtn = document.getElementById('offboardBtn');
+      const landBtn = document.getElementById('landBtn');
+      
+
+
+      document.getElementById('satelliteBtn').addEventListener('click',()=>{ map.setStyle({style:'satellite'}); const sel=document.getElementById('styleSelector'); if(sel) sel.value='satellite'; });
+      document.getElementById('styleSelector').addEventListener('change',function(){ map.setStyle({style:this.value}); });
+
+      document.getElementById('coordInput').addEventListener('change',function(){
+        const q=this.value.trim(), re=/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/;
+        if(!re.test(q)) return alert('Vui lòng nhập: lat, lon');
+        const [lat,lon]=q.split(',').map(parseFloat);
+        addMarker([lon,lat]);
+      });
+
+      map.events.add('click',e=>{
+        const pos=e?.position; if(Array.isArray(pos)&&typeof pos[0]==='number') addMarker(pos);
+      });
+
+      map.events.add('contextmenu', e=>{
+        const clickPos=e?.position; if (!clickPos) return;
+        const th=0.0005; let idx=-1;
+        markers.forEach((m,i)=>{
+          const [lng,lat]=m.getOptions().position;
+          const match = Math.abs(lat-clickPos[1])<th && Math.abs(lng-clickPos[0])<th;
+          if (match && idx===-1) idx=i;
+        });
+        if (idx!==-1){
+          map.markers.remove(markers[idx]);
+          markers.splice(idx,1);
+          if (steps[idx]) steps.splice(idx,1);
+          steps.forEach((s,k)=>s.markerIndex=k);
+          rebuildMarkers();
+          renderSteps();
+        }
+      });
+      connectBtn.addEventListener('click', ()=>{
+        if (pending.CONNECT) return;
+        startOp('CONNECT', connectBtn, ()=> window.bridge?.startConnection?.(), {timeout:3000, retries:0});
+      });
+
+      disconnectBtn.addEventListener('click', ()=>{
+        if (pending.DISCONNECT) return;
+        startOp('DISCONNECT', disconnectBtn, ()=> window.bridge?.stopConnection?.(), {timeout:3000, retries:0});
+      });
+
+      offBtn.addEventListener('click', ()=>{
+        if (pending.OFFBOARD) return;
+        startOp('OFFBOARD', offBtn, ()=> window.bridge?.offBoardConnect?.(), {timeout:3000, retries:0});
+
+      });
+
+      landBtn.addEventListener('click', ()=>{
+        if (pending.OFFBOARD){ pushStatus('Đang chờ OFFBOARD…', 'err'); return; }
+        if (pending.LAND) return;
+        startOp('LAND', landBtn, ()=> window.bridge?.landConnect?.(), {timeout:3000, retries:0});
+      });
+
+      document.getElementById('drawPolylineBtn').addEventListener('click',()=>{
+        const coords=markers.map(m=>m.getOptions().position).filter(Array.isArray);
+        if(coords.length<2) return alert('Cần ít nhất 2 điểm hợp lệ.');
+        dataSource.clear(); dataSource.add(new atlas.data.LineString(coords));
+      });
+      document.getElementById('drawPolygonBtn').addEventListener('click',()=>{
+        const coords=markers.map(m=>m.getOptions().position).filter(Array.isArray);
+        if(coords.length<3) return alert('Cần ít nhất 3 điểm hợp lệ.');
+        coords.push(coords[0]); dataSource.clear(); dataSource.add(new atlas.data.Polygon([coords]));
+      });
+
+      document.getElementById('clearMarkersBtn').addEventListener('click',()=>{
+        markers.forEach(m=>map.markers.remove(m));
+        markers.length=0; dataSource.clear();
+        steps = []; renderSteps();
+      });
+
+      
+
+      document.getElementById('posMode').addEventListener('change',e=>{
+        currentMode=e.target.value;
+        if(currentMode==='local'){ if(lastLocal) updateDroneMarkerFromLocal(); }
+        else { if(lastGPS) updateDroneMarkerFromGPS(); }
+        updatePositionFields(); updateAltUI();
+      });
+
+      document.getElementById('centerOnDroneBtn').addEventListener('click',()=>{
+        const m=droneMarker?.getOptions?.().position;
+        if(Array.isArray(m)) map.setCamera({center:m, zoom:Math.max(map.getCamera().zoom,17)});
+      });
+
+      const tgl=document.getElementById('teleToggle'); if(tgl) tgl.addEventListener('click',toggleTelemetry);
+
+      setupStepsUI();
+      updatePositionFields(); updateAltUI();
+    }
+
+    function addMarker(position){
+      const num=markers.length+1, el=document.createElement('div');
+      el.style.cssText="background:#ef4444;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;border:1px solid #fff;";
+      el.textContent=num; el.title=`Lon: ${position[0].toFixed(6)}\nLat: ${position[1].toFixed(6)}`;
+      const m=new atlas.HtmlMarker({position, htmlContent:el}); map.markers.add(m); markers.push(m);
+      addStepForMarker(m);
+    }
+
+    function rebuildMarkers(){
+      dataSource.clear();
+      markers.forEach((m,i)=>{
+        const [lon,lat]=m.getOptions().position;
+        m.setOptions({htmlContent:`<div title="Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}" style="background:#ef4444;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;border:1px solid white;">${i+1}</div>`});
+      });
+    }
+
+    function setBusy(el, on){
+      if(!el) return;
+      el.classList.toggle('is-busy', !!on);
+      el.disabled = !!on;
+    }
+    function pushStatus(text, type='info'){
+      const card = document.getElementById('statusCard');
+      const body = document.getElementById('statusBody');
+      if(!card || !body) return;
+      body.className = 's-body' + (type==='ok' ? ' ok' : type==='err' ? ' err' : '');
+      body.textContent = text;
+      card.hidden = false;
+      card.classList.add('show');
+    }
+
+    function hideStatus(){
+      const card = document.getElementById('statusCard');
+      if(!card) return;
+      card.classList.remove('show');
+      setTimeout(()=>{ card.hidden = true; }, 200);
+    }
+    document.getElementById('statusClose')?.addEventListener('click', hideStatus);
+
+
+    function startOp(mode, btn, sendFn, {timeout=ACK_TIMEOUT_MS, retries=ACK_RETRY_MAX} = {}) {
+      pending[mode] = true;
+      setBusy(btn, true);
+      opRetries[mode] = 0;
+
+      sendFn();
+      armTimer();
+
+      function armTimer(){
+        clearTimeout(opTimers[mode]);
+        opTimers[mode] = setTimeout(()=>{
+          if (!pending[mode]) return;
+          if (opRetries[mode] < retries){
+            opRetries[mode]++;
+            pushStatus(`${mode}: không thấy ACK, thử lại ${opRetries[mode]}/${retries}…`, 'err');
+            sendFn();
+            armTimer();
+          }else{
+            pending[mode] = false;
+            setBusy(btn, false);
+            pushStatus(`${mode}: TIMEOUT — chưa thấy phản hồi.`, 'err');
+          }
+        }, timeout);
+      }
+    }
+
+    function clearOp(mode){
+      pending[mode] = false;
+      clearTimeout(opTimers[mode]);
+      opTimers[mode] = null;
+      opRetries[mode] = 0;
+    }
+
+    function getOrCreateDroneMarker(){
+      if (droneMarker) return droneMarker;
+      const c=document.createElement('div'); c.className='pulse-marker';
+      c.style.setProperty('--pulse-color','#e67e22'); c.style.setProperty('--pulse-glow','rgba(230,126,34,.35)'); c.title='Drone';
+      ['','',''].forEach((_,i)=>{ const r=document.createElement('div'); r.className='pulse-ring'+(i===1?' r2':i===2?' r3':''); c.appendChild(r); });
+      const dot=document.createElement('div'); dot.className='pulse-dot'; c.appendChild(dot);
+      droneHtmlEl=c;
+      droneMarker=new atlas.HtmlMarker({position:[ORIGIN_LON, ORIGIN_LAT], htmlContent:c});
+      map.markers.add(droneMarker); return droneMarker;
+    }
+    
+    function llDistanceMeters(a, b){
+      if (!a || !b) return Infinity;
+      const R = 6378137;
+      const dLat = (b[1] - a[1]) * Math.PI/180;
+      const dLon = (b[0] - a[0]) * Math.PI/180;
+      const mlat = (a[1] + b[1]) * 0.5 * Math.PI/180;
+      const x = dLon * Math.cos(mlat), y = dLat;
+      return Math.sqrt(x*x + y*y) * R;
+    }
+
+
+    function updateDroneMarkerFromLocal(){
+      if(!lastLocal) return; const m=getOrCreateDroneMarker(); const next=enuToLatLon(lastLocal.x,lastLocal.y,lastLocal.z);
+      if(_lastDroneLL && llDistanceMeters(_lastDroneLL,next)<0.5) return; _lastDroneLL=next; m.setOptions({position:next});
+      if(droneHtmlEl){
+        droneHtmlEl.title=`LOCAL\nx:${lastLocal.x.toFixed(2)} y:${lastLocal.y.toFixed(2)} z:${lastLocal.z.toFixed(2)}`;
+        droneHtmlEl.style.setProperty('--pulse-color','#1abc9c'); droneHtmlEl.style.setProperty('--pulse-glow','rgba(26,188,156,.35)');
+        droneHtmlEl.classList.remove('nudge'); void droneHtmlEl.offsetWidth; droneHtmlEl.classList.add('nudge');
+      }
+    }
+    function updateDroneMarkerFromGPS(){
+      if(!lastGPS) return; const m=getOrCreateDroneMarker(); const next=[lastGPS.lon,lastGPS.lat];
+      if(_lastDroneLL && llDistanceMeters(_lastDroneLL,next)<0.5) return; _lastDroneLL=next; m.setOptions({position:next});
+      if(droneHtmlEl){
+        droneHtmlEl.title=`GPS\nlat:${lastGPS.lat.toFixed(6)} lon:${lastGPS.lon.toFixed(6)} alt:${lastGPS.alt.toFixed(1)}`;
+        droneHtmlEl.style.setProperty('--pulse-color','#e74c3c'); droneHtmlEl.style.setProperty('--pulse-glow','rgba(231,76,60,.35)');
+        droneHtmlEl.classList.remove('nudge'); void droneHtmlEl.offsetWidth; droneHtmlEl.classList.add('nudge');
+      }
+    }
+
+    function updatePositionFields(){
+      const xEl=document.getElementById('xVal'), yEl=document.getElementById('yVal'), zEl=document.getElementById('zVal');
+      if(currentMode==='local'){
+        xEl.placeholder='x (m)'; yEl.placeholder='y (m)'; zEl.placeholder='z (m)';
+        if(lastLocal){ xEl.value=lastLocal.x.toFixed(3); yEl.value=lastLocal.y.toFixed(3); zEl.value=lastLocal.z.toFixed(3);} else { xEl.value=yEl.value=zEl.value='—'; }
+      } else {
+        xEl.placeholder='lat (deg)'; yEl.placeholder='lon (deg)'; zEl.placeholder='alt (m)';
+        if(lastGPS){ xEl.value=lastGPS.lat.toFixed(6); yEl.value=lastGPS.lon.toFixed(6); zEl.value=lastGPS.alt.toFixed(2);} else { xEl.value=yEl.value=zEl.value='—'; }
+      }
+    }
+    function updateAltUI(){
+      const el=document.getElementById('teleAlt'); if(!el) return;
+      if(currentMode==='local') el.textContent= lastLocal ? lastLocal.z.toFixed(2) : '—';
+      else                      el.textContent= lastGPS ? lastGPS.alt.toFixed(2) : '—';
+    }
+
+    function setConnected(on){ const el=document.getElementById('teleConn'); if(!el) return; el.textContent=on?'Connected':'Disconnected'; el.classList.toggle('tele__status--ok',on); el.classList.toggle('tele__status--bad',!on); }
+    function updateBatteryUI(percent, voltage){
+      const txt=document.getElementById('teleBattText');
+      const p=Number.isFinite(percent)?Math.max(0,Math.min(100,+percent)):null;
+      const v=Number.isFinite(voltage)?+voltage:null;
+      if(!txt) return;
+      if(p!=null && v!=null) txt.textContent=`${p.toFixed(0)}% • ${v.toFixed(2)}V`;
+      else if(p!=null) txt.textContent=`${p.toFixed(0)}%`;
+      else if(v!=null) txt.textContent=`${v.toFixed(2)}V`;
+      else txt.textContent='—';
+    }
+    function updateSpeedUI(spd){ const el=document.getElementById('teleSpeed'); if(el) el.textContent=(typeof spd==='number' && isFinite(spd))?spd.toFixed(2):'—'; }
+
+    function openTelemetry(){ document.getElementById('teleDrawer').classList.remove('collapsed'); }
+    function closeTelemetry(){ document.getElementById('teleDrawer').classList.add('collapsed'); }
+    function toggleTelemetry(){ const wrap=document.getElementById('teleDrawer'); const nowCollapsed=wrap.classList.toggle('collapsed'); telePinned=!nowCollapsed; allowAutoPeek=!nowCollapsed; if(telePinned) clearTimeout(teleAutoTimer); }
+
+  
+    function latLonToENU(lat,lon,originLat=ORIGIN_LAT,originLon=ORIGIN_LON){ const R=6378137.0, latR=lat*Math.PI/180.0, lonR=lon*Math.PI/180.0, oLat=originLat*Math.PI/180.0, oLon=originLon*Math.PI/180.0; const dLat=latR-oLat, dLon=lonR-oLon, north=dLat*R, east=dLon*R*Math.cos(oLat); return [east,north,0]; }
+
+    let steps = []; let _seqStepId = 1;
+    const TASKS = ["None","Photo","Hover 5s","Payload drop","Custom"];
+    const TYPES = ["Fly to","Take off","Return & land"];
+
+    function fmt(n, d=6){ return Number(n).toFixed(d); }
+    function defaultAlt(){
+      if (currentMode==='local' && lastLocal) return Math.max(0, +lastLocal.z||0);
+      if (lastGPS) return Math.max(0, +lastGPS.alt||0);
+      return 10;
+    }
+
+    function renderSteps(){
+      const list = document.getElementById('stepsList');
+      if (!list) return;
+      list.innerHTML = '';
+
+      steps.forEach((s, idx) => {
+        // Nếu dữ liệu cũ còn task lạ thì trả về mặc định
+        if (!TASKS.includes(s.task)) s.task = TASKS[0];
+
+        const row = document.createElement('div');
+        row.className = 'step-item';
+        row.innerHTML = `
+          <div class="step-head">
+            <div class="step-num">${idx+1}</div>
+            <select class="step-type">
+              ${TYPES.map(t=>`<option ${t===s.type?'selected':''}>${t}</option>`).join('')}
+            </select>
+            <div class="step-actions">
+              <button class="icon-btn up" title="Move up">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="18 15 12 9 6 15"></polyline>
+                </svg>
+              </button>
+              <button class="icon-btn down" title="Move down">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <button class="icon-btn focus" title="Center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
+                </svg>
+              </button>
+              <button class="icon-btn del" title="Delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                  <path d="M10 11v6M14 11v6"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="step-grid">
+            <div class="step-field"><span style="opacity:.7">Lat</span>
+              <input class="lat" value="${fmt(s.lat)}">
+            </div>
+            <div class="step-field"><span style="opacity:.7">Lon</span>
+              <input class="lon" value="${fmt(s.lon)}">
+            </div>
+          </div>
+
+          <div class="step-foot">
+            <div class="step-field"><span style="opacity:.7">Alt</span>
+              <input class="alt" value="${Number(s.alt).toFixed(2)}">
+            </div>
+            <select class="step-task">
+              ${TASKS.map(t=>`<option ${t===s.task?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+        `;
+
+        // Gán handler
+        row.querySelector('.up').onclick    = () => moveStep(idx, -1);
+        row.querySelector('.down').onclick  = () => moveStep(idx, +1);
+        row.querySelector('.del').onclick   = () => removeStep(idx, true);
+        row.querySelector('.focus').onclick = () => map.setCamera({
+          center:[s.lon, s.lat],
+          zoom: Math.max(map.getCamera().zoom, 17)
+        });
+
+        row.querySelector('.step-type').onchange = e => { s.type = e.target.value; };
+        row.querySelector('.step-task').onchange = e => { s.task = e.target.value; };
+
+        row.querySelector('.lat').onchange = e => updateStepCoord(idx, +e.target.value, s.lon);
+        row.querySelector('.lon').onchange = e => updateStepCoord(idx, s.lat, +e.target.value);
+        row.querySelector('.alt').onchange = e => { s.alt = +e.target.value || 0; };
+
+        list.appendChild(row);
+      });
+    }
+
+
+    function moveStep(i, dir){
+      const j = i + dir; if (j<0 || j>=steps.length) return;
+      [steps[i], steps[j]] = [steps[j], steps[i]];
+      [markers[i], markers[j]] = [markers[j], markers[i]];
+      steps.forEach((s,k)=>s.markerIndex=k);
+      rebuildMarkers();
+      renderSteps();
+    }
+
+    function removeStep(i, alsoRemoveMarker){
+      steps.splice(i,1);
+      if (alsoRemoveMarker && markers[i]){
+        map.markers.remove(markers[i]);
+        markers.splice(i, 1);
+      }
+      steps.forEach((s,k)=>s.markerIndex=k);
+      rebuildMarkers();
+      renderSteps();
+    }
+
+    function updateStepCoord(i, lat, lon){
+      const s = steps[i];
+      if (!isFinite(lat) || !isFinite(lon)) return;
+      s.lat = lat; s.lon = lon;
+      const m = markers[i];
+      if (m){ m.setOptions({ position: [lon, lat] }); rebuildMarkers(); }
+    }
+    function addStepForMarker(marker){
+      const [lon, lat] = marker.getOptions().position;
+      const s = {
+        id: _seqStepId++,
+        type: "Fly to",
+        lat, lon,
+        alt: defaultAlt(),
+        task: TASKS[0],         // mặc định là phần tử đầu (không còn "None")
+        markerIndex: markers.length - 1
+      };
+      steps.push(s);
+      renderSteps();
+    }
+
+    function setupStepsUI(){
+      const show = document.getElementById('stepsShowBtn');
+      const hide = document.getElementById('stepsHideBtn');
+      const panel = document.getElementById('stepsPanel');
+      const addBtn = document.getElementById('addStepBtn');
+      const sendBtn = document.getElementById('sendMissionBtn');
+
+      if (show) show.onclick = ()=> panel.classList.toggle('is-hidden');
+      if (hide) hide.onclick = ()=> panel.classList.add('is-hidden');
+
+      if (addBtn) addBtn.onclick = ()=>{
+        const cam = map.getCamera();
+        const pos = cam.center; // [lon, lat]
+        addMarker(pos);         // tự add step
+      };
+
+      if (sendBtn) sendBtn.onclick = () => {
+        if (!steps.length) return alert("❗ Không có waypoint nào.");
+
+        // giữ số học rõ ràng, giới hạn độ chính xác hợp lý
+        const round6 = n => Math.round((+n) * 1e6) / 1e6;
+        const round2 = n => Math.round((+n) * 1e2) / 1e2;
+
+        const wps = steps.map(s => ({
+          lat:  round6(s.lat),
+          lon:  round6(s.lon),
+          alt:  round2(s.alt ?? 0)
+        }));
+
+        // gửi danh sách GPS sang app/bridge
+        window.bridge?.receivedTargetWaypoint?.(wps);
+        pushStatus(`Đã gửi ${wps.length} waypoint (GPS).`, 'ok');
+      };
+    }
+  </script>
+</body>
+</html>
